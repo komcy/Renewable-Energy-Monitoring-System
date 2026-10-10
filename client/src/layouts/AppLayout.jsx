@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet } from 'react-router'
 import Breadcrumbs from '@/components/layout/Breadcrumbs'
 import Navbar from '@/components/layout/Navbar'
 import Sidebar from '@/components/layout/Sidebar'
+import { LoadingState } from '@/components/ui/States'
 import { AlertsProvider } from '@/context/AlertsProvider'
+import { BreadcrumbContext } from '@/context/breadcrumbContext'
 
 const COLLAPSE_KEY = 'rems_sidebar_collapsed'
 
@@ -31,8 +33,13 @@ export default function AppLayout() {
   const toggleCollapsed = useCallback(() => setCollapsed((c) => !c), [])
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
+  const [crumbLabels, setCrumbLabels] = useState({})
+  const setLabel = useCallback((path, label) => setCrumbLabels((l) => ({ ...l, [path]: label })), [])
+  const crumbs = useMemo(() => ({ labels: crumbLabels, setLabel }), [crumbLabels, setLabel])
+
   return (
     <AlertsProvider>
+      <BreadcrumbContext.Provider value={crumbs}>
       <div className="min-h-full">
         <Sidebar
           collapsed={collapsed}
@@ -45,11 +52,14 @@ export default function AppLayout() {
           <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-7xl">
               <Breadcrumbs />
-              <Outlet />
+              <Suspense fallback={<LoadingState label="Loading page…" />}>
+                <Outlet />
+              </Suspense>
             </div>
           </main>
         </div>
       </div>
+      </BreadcrumbContext.Provider>
     </AlertsProvider>
   )
 }

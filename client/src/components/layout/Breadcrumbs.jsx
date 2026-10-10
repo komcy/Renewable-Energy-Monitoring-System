@@ -1,16 +1,20 @@
 import { ChevronRight, House } from 'lucide-react'
+import { useContext } from 'react'
 import { Link, useMatches } from 'react-router'
+import { BreadcrumbContext } from '@/context/breadcrumbContext'
 
 /**
- * Built from route `handle.crumb` (string or (match) => string).
+ * Built from route `handle.crumb` (string or (match) => string). Pages can
+ * override their own label with useBreadcrumbLabel (e.g. a plant's name).
  */
 export default function Breadcrumbs() {
   const matches = useMatches()
+  const { labels } = useContext(BreadcrumbContext)
   const crumbs = matches
     .filter((m) => m.handle?.crumb)
     .map((m) => ({
       path: m.pathname,
-      label: typeof m.handle.crumb === 'function' ? m.handle.crumb(m) : m.handle.crumb,
+      label: labels[m.pathname] || (typeof m.handle.crumb === 'function' ? m.handle.crumb(m) : m.handle.crumb),
     }))
 
   return (
