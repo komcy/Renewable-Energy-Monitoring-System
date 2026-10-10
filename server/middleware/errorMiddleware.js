@@ -12,7 +12,7 @@ const notFound = (req, res, next) => {
 const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || (res.statusCode >= 400 ? res.statusCode : 500);
   let message = err.message || 'Internal server error';
-  let details;
+  let details = err.details;
 
   if (err.name === 'ValidationError') {
     statusCode = 400;

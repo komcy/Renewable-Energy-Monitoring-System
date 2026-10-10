@@ -6,12 +6,19 @@ const mongoose = require('mongoose');
 
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
+const plantRoutes = require('./routes/plantRoutes');
+const assetRoutes = require('./routes/assetRoutes');
+const telemetryRoutes = require('./routes/telemetryRoutes');
+const alertRoutes = require('./routes/alertRoutes');
+const { rejectUnsafeKeys } = require('./middleware/sanitizeMiddleware');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
-app.use(express.json({ limit: '1mb' }));
+// Large enough for telemetry batches (up to 5000 readings)
+app.use(express.json({ limit: '5mb' }));
+app.use(rejectUnsafeKeys);
 
 // Health check: reports whether the API is up and the DB is connected
 app.get('/api/health', (req, res) => {
@@ -24,6 +31,10 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/plants', plantRoutes);
+app.use('/api/assets', assetRoutes);
+app.use('/api/telemetry', telemetryRoutes);
+app.use('/api/alerts', alertRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
