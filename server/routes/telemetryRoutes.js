@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   ingestTelemetry,
+  uploadTelemetryCsv,
   getTelemetry,
   getLatestTelemetry,
   getAggregatedTelemetry,
@@ -15,5 +16,6 @@ router.get('/', getTelemetry);
 router.get('/latest', getLatestTelemetry);
 router.get('/aggregate', getAggregatedTelemetry);
 router.post('/', authorizeRoles(['Admin', 'Operator']), ingestTelemetry);
+router.post('/upload', authorizeRoles(['Admin', 'Operator']), uploadTelemetryCsv);
 
 module.exports = router;

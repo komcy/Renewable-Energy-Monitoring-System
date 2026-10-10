@@ -2,6 +2,7 @@ const TelemetryReading = require('../models/TelemetryReading');
 const { METRIC_FIELDS } = require('../models/TelemetryReading');
 const ApiError = require('../utils/ApiError');
 const { ingestReadings } = require('../services/telemetryIngestion');
+const { ingestCsvUpload } = require('../services/csvIngestion');
 const {
   queryId,
   queryDate,
@@ -68,6 +69,26 @@ const ingestTelemetry = async (req, res) => {
     ...(result.inserted <= 50 && {
       readings: result.readings.map(({ _id, ...r }) => ({ id: _id, ...r })),
     }),
+  });
+};
+
+/**
+ * POST /api/telemetry/upload  (Admin, Operator)
+ * multipart/form-data with a CSV in field "file".
+ * Required columns: assetCode, timestamp, powerOutput. Optional: temperature, irradiance,
+ * windSpeed, stateOfCharge, rotorSpeed, efficiency, operatingStatus, cumulativeEnergy.
+ * Valid rows are stored; invalid rows are reported by CSV line number.
+ */
+const uploadTelemetryCsv = async (req, res) => {
+  const summary = await ingestCsvUpload(req);
+  const status = summary.accepted > 0 ? 201 : 400;
+  res.status(status).json({
+    success: summary.accepted > 0,
+    message:
+      summary.accepted > 0
+        ? `Stored ${summary.accepted} of ${summary.totalRows} row(s)${summary.rejected ? `; ${summary.rejected} rejected` : ''}`
+        : 'No rows were stored',
+    data: summary,
   });
 };
 
@@ -216,4 +237,4 @@ const getAggregatedTelemetry = async (req, res) => {
   });
 };
 
-module.exports = { ingestTelemetry, getTelemetry, getLatestTelemetry, getAggregatedTelemetry };
+module.exports = { ingestTelemetry, uploadTelemetryCsv, getTelemetry, getLatestTelemetry, getAggregatedTelemetry };
