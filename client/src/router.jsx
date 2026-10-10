@@ -4,8 +4,8 @@ import PublicOnlyRoute from '@/components/auth/PublicOnlyRoute'
 import AppLayout from '@/layouts/AppLayout'
 import AuthLayout from '@/layouts/AuthLayout'
 import ComingSoonPage from '@/pages/ComingSoonPage'
-import DashboardPage from '@/pages/DashboardPage'
 import LoginPage from '@/pages/LoginPage'
+import { AlertsPage, DashboardPage, PlantDetailPage, PlantsPage } from '@/pages/lazyPages'
 import NotFoundPage from '@/pages/NotFoundPage'
 import RegisterPage from '@/pages/RegisterPage'
 
@@ -40,15 +40,14 @@ export const router = createBrowserRouter([
             handle: { crumb: 'Telemetry' },
             element: soon('Telemetry', 'Browse historical readings, chart trends and upload CSV telemetry.', 'Analytics phase'),
           },
-          {
-            path: '/alerts',
-            handle: { crumb: 'Alerts' },
-            element: soon('Alert centre', 'Filter, acknowledge and resolve fault alerts raised by the detection engine.', 'Alert centre phase'),
-          },
+          { path: '/alerts', element: <AlertsPage />, handle: { crumb: 'Alerts' } },
           {
             path: '/plants',
             handle: { crumb: 'Plants' },
-            element: soon('Energy plants', 'Register and manage solar, wind and hybrid plants.', 'Asset management phase'),
+            children: [
+              { index: true, element: <PlantsPage /> },
+              { path: ':id', element: <PlantDetailPage />, handle: { crumb: 'Plant details' } },
+            ],
           },
           {
             path: '/assets',

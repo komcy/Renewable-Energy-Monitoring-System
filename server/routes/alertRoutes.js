@@ -3,6 +3,7 @@ const {
   listAlerts,
   listActiveAlerts,
   getAlertSummary,
+  getAlertCounts,
   getAlert,
   acknowledgeAlert,
   resolveAlert,
@@ -17,6 +18,7 @@ router.use(verifyToken);
 router.get('/', listAlerts);
 router.get('/active', listActiveAlerts);
 router.get('/summary', getAlertSummary);
+router.get('/counts', getAlertCounts);
 router.get('/:id', getAlert);
 router.patch('/:id/acknowledge', canWrite, acknowledgeAlert);
 router.patch('/:id/resolve', canWrite, resolveAlert);

@@ -91,6 +91,32 @@ const getAlertSummary = async (req, res) => {
   res.json({ success: true, data: { totalOpen: total, bySeverity, byStatus } });
 };
 
+/**
+ * GET /api/alerts/counts?status=&plant=&asset=&alertType=&from=&to=
+ * Counts by severity for the given filters (defaults to open alerts);
+ * drives the Alert Center's severity tabs.
+ */
+const getAlertCounts = async (req, res) => {
+  const status = queryEnumList(req.query, 'status', ALERT_STATUSES) || OPEN_STATUSES;
+  const alertType = queryEnumList(req.query, 'alertType', ALERT_TYPES);
+  const plant = queryId(req.query, 'plant');
+  const asset = queryId(req.query, 'asset');
+  const range = dateRange(queryDate(req.query, 'from'), queryDate(req.query, 'to'));
+  const match = { status: { $in: status } };
+  if (alertType) match.alertType = { $in: alertType };
+  if (plant) match.plant = toObjectId(plant);
+  if (asset) match.asset = toObjectId(asset);
+  if (range) match.timestamp = range;
+
+  const rows = await Alert.aggregate([{ $match: match }, { $group: { _id: '$severity', count: { $sum: 1 } } }]);
+  const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
+  for (const { _id, count } of rows) bySeverity[_id] = count;
+  res.json({
+    success: true,
+    data: { status, total: Object.values(bySeverity).reduce((s, n) => s + n, 0), bySeverity },
+  });
+};
+
 /** GET /api/alerts/:id */
 const getAlert = async (req, res) => {
   const alert = await findAlertOr404(req.params.id);
@@ -133,4 +159,4 @@ const resolveAlert = async (req, res) => {
   res.json({ success: true, data: alert });
 };
 
-module.exports = { listAlerts, listActiveAlerts, getAlertSummary, getAlert, acknowledgeAlert, resolveAlert };
+module.exports = { listAlerts, listActiveAlerts, getAlertSummary, getAlertCounts, getAlert, acknowledgeAlert, resolveAlert };

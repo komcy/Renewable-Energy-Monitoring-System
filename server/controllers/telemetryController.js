@@ -1,3 +1,5 @@
+const Asset = require('../models/Asset');
+const { SOURCE_TYPES } = require('../models/Asset');
 const TelemetryReading = require('../models/TelemetryReading');
 const { METRIC_FIELDS } = require('../models/TelemetryReading');
 const ApiError = require('../utils/ApiError');
@@ -144,9 +146,10 @@ const getLatestTelemetry = async (req, res) => {
 };
 
 /**
- * GET /api/telemetry/aggregate?interval=hour|day&asset=|plant=&from=&to=&timezone=Asia/Kolkata
+ * GET /api/telemetry/aggregate?interval=hour|day&asset=|plant=&sourceType=SolarPanel,WindTurbine&from=&to=&timezone=
  * Time-bucketed averages for charts. With `asset`, values are that asset's;
  * otherwise per-asset buckets are combined (power summed, efficiency averaged).
+ * `sourceType` restricts to those asset types (e.g. generation only).
  */
 const getAggregatedTelemetry = async (req, res) => {
   const intervalKey = queryEnum(req.query, 'interval', Object.keys(INTERVALS)) || 'hour';
@@ -160,6 +163,12 @@ const getAggregatedTelemetry = async (req, res) => {
   }
 
   const filter = buildFilter(req.query, { castIds: true });
+  const sourceTypes = queryEnumList(req.query, 'sourceType', SOURCE_TYPES);
+  if (sourceTypes) {
+    const ids = await Asset.find({ sourceType: { $in: sourceTypes }, ...(filter.plant && { plant: filter.plant }) }).distinct('_id');
+    const allowed = filter.asset ? ids.filter((id) => id.equals(filter.asset)) : ids;
+    filter.asset = { $in: allowed };
+  }
   const to = filter.timestamp?.$lte || new Date();
   const from = filter.timestamp?.$gte || new Date(to.getTime() - interval.defaultRangeMs);
   if (to - from > interval.maxRangeMs) {
@@ -232,6 +241,7 @@ const getAggregatedTelemetry = async (req, res) => {
     timezone,
     from,
     to,
+    ...(sourceTypes && { sourceTypes }),
     count: buckets.length,
     data: buckets,
   });
