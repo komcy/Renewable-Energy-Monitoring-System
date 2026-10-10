@@ -3,8 +3,10 @@
  *   validate → resolve assets → derive expected power / efficiency / energy
  *   → batch insert → run alert engine → update asset "latest" values.
  *
- * A batch is all-or-nothing: if any record is invalid, nothing is stored and
- * the caller gets a 400 listing every bad record.
+ * Default mode is all-or-nothing: if any record is invalid, nothing is stored
+ * and the caller gets a 400 listing every bad record. With { partial: true }
+ * (CSV upload, simulator) valid records are stored and invalid ones returned
+ * in `rejected`.
  */
 const mongoose = require('mongoose');
 const Asset = require('../models/Asset');
@@ -40,7 +42,7 @@ const toNumber = (value) => {
 };
 
 /** Validates one raw record's own fields (asset lookup happens separately). */
-const parseRecord = (raw) => {
+const parseRecord = (raw, { requireTimestamp = false } = {}) => {
   const errors = [];
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { errors: ['Record must be an object'] };
 
@@ -67,6 +69,8 @@ const parseRecord = (raw) => {
     if (Number.isNaN(ts.getTime())) errors.push('timestamp is not a valid date');
     else if (ts.getTime() > Date.now() + FUTURE_TOLERANCE_MS) errors.push('timestamp is in the future');
     else values.timestamp = ts;
+  } else if (requireTimestamp) {
+    errors.push('timestamp is required');
   } else {
     values.timestamp = new Date();
   }
@@ -99,9 +103,12 @@ const latestSpecUpdate = (asset, latest) => {
 
 /**
  * Ingests raw telemetry records.
- * @returns {{ inserted:number, readings:object[], alerts:{created:object[], updated:object[]} }}
+ * @param {object[]} records
+ * @param {{ source?: string, partial?: boolean, requireTimestamp?: boolean }} options
+ * @returns {{ inserted:number, readings:object[], rejected:{index:number, errors:string[]}[],
+ *   alerts:{created:object[], updated:object[]} }}
  */
-const ingestReadings = async (records, { source = 'api' } = {}) => {
+const ingestReadings = async (records, { source = 'api', partial = false, requireTimestamp = false } = {}) => {
   if (!Array.isArray(records) || records.length === 0) {
     throw new ApiError(400, 'Provide at least one telemetry record');
   }
@@ -127,7 +134,7 @@ const ingestReadings = async (records, { source = 'api' } = {}) => {
   const parsed = [];
   const seen = new Set();
   records.forEach((raw, index) => {
-    const { values, errors: fieldErrors } = parseRecord(raw);
+    const { values, errors: fieldErrors } = parseRecord(raw, { requireTimestamp });
     const key = assetKey(raw);
     let asset;
     if (!key.id && !key.code) fieldErrors.push('asset (id) or assetCode is required');
@@ -157,29 +164,51 @@ const ingestReadings = async (records, { source = 'api' } = {}) => {
     }
 
     if (fieldErrors.length) errors.push({ index, code, errors: fieldErrors });
-    else parsed.push({ asset, values });
+    else parsed.push({ index, asset, values });
   });
 
-  if (errors.length) {
+  // Group by asset so we can check for already-stored readings per asset
+  const groups = new Map();
+  for (const p of parsed) {
+    if (!groups.has(p.asset.id)) groups.set(p.asset.id, { asset: p.asset, items: [] });
+    groups.get(p.asset.id).items.push(p);
+  }
+
+  // Reject readings that already exist (same asset + timestamp), e.g. a re-uploaded CSV
+  for (const group of groups.values()) {
+    const existing = await TelemetryReading.find({
+      asset: group.asset._id,
+      timestamp: { $in: group.items.map((p) => p.values.timestamp) },
+    })
+      .select('timestamp')
+      .lean();
+    if (!existing.length) continue;
+    const taken = new Set(existing.map((e) => e.timestamp.getTime()));
+    group.items = group.items.filter((p) => {
+      if (!taken.has(p.values.timestamp.getTime())) return true;
+      errors.push({ index: p.index, errors: ['a reading for this asset and timestamp already exists'] });
+      return false;
+    });
+    if (!group.items.length) groups.delete(group.asset.id);
+  }
+  errors.sort((a, b) => a.index - b.index);
+  const rejected = errors.map(({ index, errors: errs }) => ({ index, errors: errs }));
+
+  if (errors.length && !partial) {
     const allInactive = errors.every((e) => e.code === 'ASSET_INACTIVE');
     throw new ApiError(
       allInactive ? 409 : 400,
       `${errors.length} of ${records.length} telemetry record(s) rejected; nothing was stored`,
-      errors.slice(0, 100).map(({ index, errors: errs }) => ({ index, errors: errs }))
+      rejected.slice(0, 100)
     );
   }
-
-  // Group by asset, oldest first, so energy integration and drop detection run in order
-  const groups = new Map();
-  for (const p of parsed) {
-    if (!groups.has(p.asset.id)) groups.set(p.asset.id, { asset: p.asset, items: [] });
-    groups.get(p.asset.id).items.push(p.values);
-  }
+  if (!groups.size) return { inserted: 0, readings: [], rejected, alerts: { created: [], updated: [] } };
 
   const docs = [];
   const perAsset = [];
-  for (const { asset, items } of groups.values()) {
-    items.sort((a, b) => a.timestamp - b.timestamp);
+  // Oldest first per asset, so energy integration and drop detection run in order
+  for (const { asset, items: entries } of groups.values()) {
+    const items = entries.map((p) => p.values).sort((a, b) => a.timestamp - b.timestamp);
     const prevBefore = await TelemetryReading.findOne({ asset: asset._id, timestamp: { $lt: items[0].timestamp } })
       .sort({ timestamp: -1 })
       .lean();
@@ -233,7 +262,7 @@ const ingestReadings = async (records, { source = 'api' } = {}) => {
   }
   if (assetUpdates.length) await Asset.bulkWrite(assetUpdates);
 
-  return { inserted: docs.length, readings: docs, alerts: { created, updated } };
+  return { inserted: docs.length, readings: docs, rejected, alerts: { created, updated } };
 };
 
 module.exports = { ingestReadings, MAX_BATCH };
