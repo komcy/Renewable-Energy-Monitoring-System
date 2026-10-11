@@ -57,17 +57,23 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .map((o) => o.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
+const corsBase = {
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition', 'RateLimit', 'RateLimit-Policy', 'Retry-After'],
+  maxAge: 600,
+};
+
 app.use(
-  cors({
-    origin(origin, callback) {
-      // No Origin header: same-origin requests, curl, server-to-server
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new ApiError(403, `Origin ${origin} is not allowed`));
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Content-Disposition', 'RateLimit', 'RateLimit-Policy', 'Retry-After'],
-    maxAge: 600,
+  cors((req, callback) => {
+    const origin = req.get('Origin');
+    // Same-origin: the UI served by this server (whatever host name it was opened with)
+    const self = `${req.protocol}://${req.get('host')}`;
+    // No Origin header: same-origin GETs, curl, server-to-server
+    if (!origin || origin === self || allowedOrigins.includes(origin)) {
+      return callback(null, { ...corsBase, origin: true });
+    }
+    return callback(new ApiError(403, `Origin ${origin} is not allowed`));
   })
 );
 
