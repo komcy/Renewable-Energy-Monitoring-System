@@ -42,10 +42,35 @@ const login = async (req, res) => {
 };
 
 /**
+ * POST /api/auth/change-password  (authenticated)
+ * { currentPassword, newPassword }. Signs out all other sessions and returns
+ * a fresh token for this one.
+ */
+const changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
+    throw new ApiError(400, 'currentPassword and newPassword are required');
+  }
+  if (newPassword.length < 8) throw new ApiError(400, 'New password must be at least 8 characters');
+  if (newPassword === currentPassword) throw new ApiError(400, 'New password must be different from the current one');
+
+  const user = await User.findById(req.user._id).select('+password');
+  if (!(await user.comparePassword(currentPassword))) throw new ApiError(400, 'Current password is incorrect');
+
+  user.password = newPassword;
+  user.mustChangePassword = false;
+  user.passwordChangedAt = new Date();
+  user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+  await user.save();
+
+  res.json({ success: true, message: 'Password changed', token: generateToken(user), user });
+};
+
+/**
  * GET /api/auth/me  (authenticated)
  */
 const getMe = async (req, res) => {
   res.json({ success: true, user: req.user });
 };
 
-module.exports = { register, login, getMe };
+module.exports = { register, login, getMe, changePassword };

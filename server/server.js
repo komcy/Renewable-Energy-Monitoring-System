@@ -12,6 +12,7 @@ const telemetryRoutes = require('./routes/telemetryRoutes');
 const alertRoutes = require('./routes/alertRoutes');
 const simulatorRoutes = require('./routes/simulatorRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const userRoutes = require('./routes/userRoutes');
 const simulator = require('./services/simulator');
 const { rejectUnsafeKeys } = require('./middleware/sanitizeMiddleware');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
@@ -40,6 +41,7 @@ app.use('/api/telemetry', telemetryRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/simulator', simulatorRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/users', userRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

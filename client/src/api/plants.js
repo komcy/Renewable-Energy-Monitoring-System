@@ -20,6 +20,10 @@ export const plantsApi = {
 }
 
 export const assetsApi = {
+  async list(params = {}) {
+    const { data } = await api.get('/assets', { params: { limit: 500, ...params } })
+    return data.data
+  },
   async setStatus(id, status) {
     const { data } = await api.patch(`/assets/${id}/status`, { status })
     return data.data

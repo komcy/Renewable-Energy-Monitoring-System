@@ -42,6 +42,8 @@ const ANOMALIES = {
   fault: ['SolarPanel', 'WindTurbine', 'Inverter', 'BatteryStorage', 'Transformer'],
   offline: ['SolarPanel', 'WindTurbine', 'Inverter', 'BatteryStorage', 'Transformer'],
 };
+// Alternative names accepted by the API
+const ANOMALY_ALIASES = { suddendrop: 'efficiencyLoss', zerogen: 'zeroOutput', zerogeneration: 'zeroOutput' };
 const THERMAL_SPIKE = { SolarPanel: 35, WindTurbine: 50, Inverter: 25, BatteryStorage: 25, Transformer: 35 };
 
 // ---------------------------------------------------------------- helpers
@@ -433,7 +435,8 @@ const stop = async (reason = 'stopped by user') => {
 /** Queues an anomaly for an asset for the next `ticks` readings. */
 const injectAnomaly = async (body = {}) => {
   if (!state?.running) throw new ApiError(409, 'Simulator is not running');
-  const type = Object.keys(ANOMALIES).find((t) => t.toLowerCase() === String(body.type ?? '').toLowerCase());
+  const requested = String(body.type ?? '').toLowerCase();
+  const type = Object.keys(ANOMALIES).find((t) => t.toLowerCase() === (ANOMALY_ALIASES[requested] ?? requested).toLowerCase());
   if (!type) throw new ApiError(400, `type must be one of: ${Object.keys(ANOMALIES).join(', ')}`);
   const ticks = numberIn(body, 'ticks', 1, 100, 3);
 

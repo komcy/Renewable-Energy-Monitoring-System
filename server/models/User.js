@@ -25,6 +25,11 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ROLES, default: 'Viewer' },
     isActive: { type: Boolean, default: true },
     lastLogin: Date,
+    // Bumped to invalidate every issued JWT ("sign out everywhere", password reset)
+    tokenVersion: { type: Number, default: 0 },
+    // Set when an admin issues a temporary password
+    mustChangePassword: { type: Boolean, default: false },
+    passwordChangedAt: Date,
   },
   {
     ...baseOptions,
@@ -33,6 +38,7 @@ const userSchema = new mongoose.Schema(
       transform: (doc, ret) => {
         delete ret._id;
         delete ret.password;
+        delete ret.tokenVersion;
         return ret;
       },
     },

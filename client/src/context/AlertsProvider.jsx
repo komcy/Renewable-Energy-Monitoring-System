@@ -40,8 +40,9 @@ export function AlertsProvider({ children }) {
     const onVisible = () => {
       if (!document.hidden) refresh()
     }
-    // Defer the first fetch so it runs after mount, not during the effect
-    const first = setTimeout(tick, 0)
+    // First fetch always runs (even in a background tab) so counts are never a
+    // misleading 0; later polls skip while hidden. Deferred to run after mount.
+    const first = setTimeout(refresh, 0)
     timer = setInterval(tick, POLL_MS)
     document.addEventListener('visibilitychange', onVisible)
     return () => {

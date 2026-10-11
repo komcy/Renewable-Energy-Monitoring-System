@@ -1,7 +1,7 @@
 const Asset = require('../models/Asset');
 const { SOURCE_TYPES } = require('../models/Asset');
 const TelemetryReading = require('../models/TelemetryReading');
-const { METRIC_FIELDS } = require('../models/TelemetryReading');
+const { METRIC_FIELDS, OPERATING_STATUSES } = require('../models/TelemetryReading');
 const ApiError = require('../utils/ApiError');
 const { ingestReadings } = require('../services/telemetryIngestion');
 const { ingestCsvUpload } = require('../services/csvIngestion');
@@ -94,21 +94,37 @@ const uploadTelemetryCsv = async (req, res) => {
   });
 };
 
+const SORT_FIELDS = ['timestamp', 'powerOutput', 'expectedPower', 'efficiency', 'cumulativeEnergy', 'temperature'];
+const SOURCES = TelemetryReading.schema.path('source').enumValues;
+
 /**
- * GET /api/telemetry?asset=&plant=&from=&to=&metrics=powerOutput,efficiency&sort=asc|desc&page=&limit=
+ * GET /api/telemetry?asset=&plant=&from=&to=&status=Normal,Fault&source=&metrics=powerOutput,efficiency
+ *   &sortBy=timestamp|powerOutput|…&sort=asc|desc&page=&limit=
+ * Each reading includes the asset's code, name and type.
  */
 const getTelemetry = async (req, res) => {
   const filter = buildFilter(req.query);
+  const statuses = queryEnumList(req.query, 'status', OPERATING_STATUSES);
+  const sources = queryEnumList(req.query, 'source', SOURCES);
+  if (statuses) filter.operatingStatus = { $in: statuses };
+  if (sources) filter.source = { $in: sources };
   const metrics = queryEnumList(req.query, 'metrics', METRIC_FIELDS);
+  const sortBy = queryEnum(req.query, 'sortBy', SORT_FIELDS) || 'timestamp';
   const sortDir = queryEnum(req.query, 'sort', ['asc', 'desc']) === 'asc' ? 1 : -1;
   const { page, limit, skip } = pagination(req.query, { defaultLimit: 100, maxLimit: 1000 });
 
   const projection = metrics
-    ? ['asset', 'plant', 'timestamp', 'operatingStatus', ...metrics].join(' ')
+    ? ['asset', 'plant', 'timestamp', 'operatingStatus', 'source', ...metrics].join(' ')
     : undefined;
+  // Tie-break on timestamp/_id so pages are stable when many values are equal
+  const sort = { [sortBy]: sortDir, ...(sortBy !== 'timestamp' && { timestamp: -1 }), _id: sortDir };
 
   const [readings, total] = await Promise.all([
-    TelemetryReading.find(filter, projection).sort({ timestamp: sortDir }).skip(skip).limit(limit),
+    TelemetryReading.find(filter, projection)
+      .populate('asset', 'assetCode name sourceType capacity')
+      .sort(sort)
+      .skip(skip)
+      .limit(limit),
     TelemetryReading.countDocuments(filter),
   ]);
   res.json({ success: true, total, page, pages: Math.ceil(total / limit), data: readings });
