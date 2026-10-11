@@ -1,79 +1,66 @@
 require('dotenv').config({ quiet: true });
 
-const express = require('express');
-const cors = require('cors');
 const mongoose = require('mongoose');
-
 const connectDB = require('./config/db');
-const authRoutes = require('./routes/authRoutes');
-const plantRoutes = require('./routes/plantRoutes');
-const assetRoutes = require('./routes/assetRoutes');
-const telemetryRoutes = require('./routes/telemetryRoutes');
-const alertRoutes = require('./routes/alertRoutes');
-const simulatorRoutes = require('./routes/simulatorRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
-const userRoutes = require('./routes/userRoutes');
+const app = require('./app');
 const simulator = require('./services/simulator');
-const { rejectUnsafeKeys } = require('./middleware/sanitizeMiddleware');
-const { notFound, errorHandler } = require('./middleware/errorMiddleware');
-
-const app = express();
-
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
-// Large enough for telemetry batches (up to 5000 readings)
-app.use(express.json({ limit: '5mb' }));
-app.use(rejectUnsafeKeys);
-
-// Health check: reports whether the API is up and the DB is connected
-app.get('/api/health', (req, res) => {
-  const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
-  res.json({
-    status: 'ok',
-    database: states[mongoose.connection.readyState] || 'unknown',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.use('/api/auth', authRoutes);
-app.use('/api/plants', plantRoutes);
-app.use('/api/assets', assetRoutes);
-app.use('/api/telemetry', telemetryRoutes);
-app.use('/api/alerts', alertRoutes);
-app.use('/api/simulator', simulatorRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/users', userRoutes);
-
-app.use(notFound);
-app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  const msg = '[server] JWT_SECRET is missing or shorter than 32 characters';
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`${msg}; refusing to start in production.`);
+    process.exit(1);
+  }
+  console.warn(`${msg}. Set a long random secret before deploying.`);
+}
 
 let server;
 let shuttingDown = false;
 
-/** Stops the simulator (waiting for an in-flight tick), closes HTTP and the DB connection. */
-const shutdown = async (signal) => {
+/**
+ * Graceful shutdown: stop the simulator (waiting for an in-flight tick), stop
+ * accepting connections, close the DB, then exit. Forced exit after 8 s.
+ */
+const shutdown = async (reason, exitCode = 0) => {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`[server] ${signal} received, shutting down...`);
-  const force = setTimeout(() => process.exit(1), 8000);
+  console.log(`[server] ${reason}; shutting down...`);
+  const force = setTimeout(() => process.exit(exitCode || 1), 8000);
   force.unref();
   try {
     await simulator.stop('server shutdown');
-    if (server) await new Promise((resolve) => server.close(resolve));
+    if (server) {
+      server.closeIdleConnections?.();
+      await new Promise((resolve) => server.close(resolve));
+    }
     await mongoose.disconnect();
   } catch (err) {
     console.error('[server] error during shutdown:', err.message);
   }
-  process.exit(0);
+  process.exit(exitCode);
 };
 
 const signals = ['SIGINT', 'SIGTERM', ...(process.platform === 'win32' ? ['SIGBREAK'] : ['SIGUSR2'])];
-for (const sig of signals) process.once(sig, () => shutdown(sig));
+for (const sig of signals) process.once(sig, () => shutdown(`${sig} received`));
+
+// A bug that escapes every handler leaves the process in an unknown state: log it and restart cleanly
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] unhandled promise rejection:', reason);
+  shutdown('unhandled rejection', 1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[server] uncaught exception:', err);
+  shutdown('uncaught exception', 1);
+});
 
 const start = async () => {
   await connectDB();
-  server = app.listen(PORT, () => console.log(`[server] REMS API listening on http://localhost:${PORT}`));
+  server = app.listen(PORT, () => {
+    console.log(`[server] REMS API listening on http://localhost:${PORT} (${process.env.NODE_ENV || 'development'})`);
+    if (app.serveClient) console.log('[server] serving the built client from client/dist');
+  });
   // Large CSV uploads are processed while they stream in; allow up to 15 min per request
   server.requestTimeout = 15 * 60 * 1000;
 
@@ -85,5 +72,3 @@ const start = async () => {
 };
 
 start();
-
-module.exports = app;

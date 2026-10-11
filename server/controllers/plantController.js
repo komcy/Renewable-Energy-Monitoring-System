@@ -1,6 +1,8 @@
 const EnergyPlant = require('../models/EnergyPlant');
 const Asset = require('../models/Asset');
 const Alert = require('../models/Alert');
+const MaintenanceRecord = require('../models/MaintenanceRecord');
+const { OPEN_STATUSES } = require('../models/MaintenanceRecord');
 const ApiError = require('../utils/ApiError');
 const {
   requireId,
@@ -64,14 +66,42 @@ const listPlants = async (req, res) => {
   });
 };
 
-/** GET /api/plants/:id  — plant with its assets and open-alert count */
+/**
+ * GET /api/plants/:id  — plant with its assets, open-alert count and, per
+ * asset, any open maintenance (In Progress takes precedence over Scheduled).
+ */
 const getPlant = async (req, res) => {
   const plant = await findPlantOr404(req.params.id);
-  const [assets, openAlerts] = await Promise.all([
+  const [assets, openAlerts, openOrders] = await Promise.all([
     Asset.find({ plant: plant._id }).select('assetCode name sourceType capacity status healthIndex lastReadingAt').sort({ assetCode: 1 }),
     Alert.countDocuments({ plant: plant._id, status: { $in: ['Active', 'Acknowledged'] } }),
+    MaintenanceRecord.find({ plant: plant._id, status: { $in: OPEN_STATUSES } })
+      .select('asset workOrderNumber title status scheduledDate priority')
+      .sort({ scheduledDate: 1 })
+      .lean(),
   ]);
-  res.json({ success: true, data: { ...plant.toJSON(), assets, openAlerts } });
+
+  const byAsset = new Map();
+  for (const o of openOrders) {
+    const key = String(o.asset);
+    const entry = byAsset.get(key) || { openCount: 0, status: 'Scheduled', next: null };
+    entry.openCount += 1;
+    if (o.status === 'In Progress') entry.status = 'In Progress';
+    if (!entry.next || (o.status === 'In Progress' && entry.next.status !== 'In Progress')) {
+      entry.next = { id: String(o._id), workOrderNumber: o.workOrderNumber, title: o.title, status: o.status, scheduledDate: o.scheduledDate, priority: o.priority };
+    }
+    byAsset.set(key, entry);
+  }
+
+  res.json({
+    success: true,
+    data: {
+      ...plant.toJSON(),
+      assets: assets.map((a) => ({ ...a.toJSON(), maintenance: byAsset.get(a.id) ?? null })),
+      openAlerts,
+      openMaintenance: openOrders.length,
+    },
+  });
 };
 
 /** POST /api/plants  (Admin, Operator) */

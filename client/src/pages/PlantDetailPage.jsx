@@ -1,9 +1,10 @@
-import { BellRing, ExternalLink, MapPin, Pencil, Power, PowerOff, RefreshCw, Zap } from 'lucide-react'
+import { BellRing, ExternalLink, MapPin, Pencil, Power, PowerOff, RefreshCw, Wrench, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
 import { GENERATING_TYPES, telemetryApi } from '@/api/analytics'
 import { plantsApi } from '@/api/plants'
 import RoleGate from '@/components/auth/RoleGate'
+import WorkOrderFormModal from '@/components/maintenance/WorkOrderFormModal'
 import AssetStatusModal from '@/components/plants/AssetStatusModal'
 import PlantFormModal from '@/components/plants/PlantFormModal'
 import Button from '@/components/ui/Button'
@@ -65,6 +66,7 @@ export default function PlantDetailPage() {
   const [typeFilter, setTypeFilter] = useState('')
   const [editing, setEditing] = useState(false)
   const [statusAsset, setStatusAsset] = useState(null)
+  const [maintenanceAsset, setMaintenanceAsset] = useState(null)
 
   const plant = useAsync(() => plantsApi.get(id), [id])
   const latest = useAsync(() => telemetryApi.latest(id), [id])
@@ -167,6 +169,18 @@ export default function PlantDetailPage() {
           <p className="text-xs font-medium text-emerald-700">View in alert centre →</p>
         </Link>
       </div>
+      {p.openMaintenance > 0 && (
+        <Link
+          to={`/maintenance?plant=${p.id}`}
+          className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 transition hover:border-amber-300"
+        >
+          <Wrench className="size-4 shrink-0" aria-hidden="true" />
+          <span className="flex-1">
+            {p.openMaintenance} open work order{p.openMaintenance === 1 ? '' : 's'} on this plant&apos;s assets
+          </span>
+          <span className="font-semibold">View maintenance →</span>
+        </Link>
+      )}
 
       {/* Spec + map */}
       <div className="grid gap-5 lg:grid-cols-5">
@@ -301,16 +315,41 @@ export default function PlantDetailPage() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <Pill tone={deactivated ? 'bg-slate-100 text-slate-600 ring-slate-500/20' : 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'}>
-                          {a.status}
-                        </Pill>
+                        <div className="flex flex-col items-start gap-1">
+                          <Pill tone={deactivated ? 'bg-slate-100 text-slate-600 ring-slate-500/20' : 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'}>
+                            {a.status}
+                          </Pill>
+                          {a.maintenance && (
+                            <Link
+                              to={`/maintenance?plant=${p.id}&search=${encodeURIComponent(a.assetCode)}`}
+                              title={`${a.maintenance.next.workOrderNumber}: ${a.maintenance.next.title}`}
+                            >
+                              <Pill
+                                tone={
+                                  a.maintenance.status === 'In Progress'
+                                    ? 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                                    : 'bg-sky-50 text-sky-700 ring-sky-600/20'
+                                }
+                              >
+                                <Wrench className="size-3" aria-hidden="true" />
+                                {a.maintenance.status === 'In Progress' ? 'Under maintenance' : 'Maintenance scheduled'}
+                                {a.maintenance.openCount > 1 && ` (${a.maintenance.openCount})`}
+                              </Pill>
+                            </Link>
+                          )}
+                        </div>
                       </td>
                       {can('assets:write') && (
-                        <td className="px-5 py-3 text-right">
-                          <Button variant={deactivated ? 'secondary' : 'ghost'} size="sm" onClick={() => setStatusAsset(a)}>
-                            {deactivated ? <Power className="size-3.5" /> : <PowerOff className="size-3.5" />}
-                            {deactivated ? 'Activate' : 'Deactivate'}
-                          </Button>
+                        <td className="px-5 py-3">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => setMaintenanceAsset(a)} title="Schedule maintenance" aria-label={`Schedule maintenance for ${a.assetCode}`}>
+                              <Wrench className="size-3.5" />
+                            </Button>
+                            <Button variant={deactivated ? 'secondary' : 'ghost'} size="sm" onClick={() => setStatusAsset(a)}>
+                              {deactivated ? <Power className="size-3.5" /> : <PowerOff className="size-3.5" />}
+                              {deactivated ? 'Activate' : 'Deactivate'}
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -330,6 +369,16 @@ export default function PlantDetailPage() {
           onSaved={() => {
             setEditing(false)
             plant.reload()
+          }}
+        />
+      )}
+      {maintenanceAsset && (
+        <WorkOrderFormModal
+          presetAsset={maintenanceAsset}
+          onClose={() => setMaintenanceAsset(null)}
+          onSaved={() => {
+            setMaintenanceAsset(null)
+            refresh()
           }}
         />
       )}

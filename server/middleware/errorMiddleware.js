@@ -8,8 +8,10 @@ const notFound = (req, res, next) => {
   next(new Error(`Route not found: ${req.method} ${req.originalUrl}`));
 };
 
-// eslint-disable-next-line no-unused-vars
 const errorHandler = (err, req, res, next) => {
+  // Failure mid-stream (e.g. a large export): too late for a JSON error, let Express abort the response
+  if (res.headersSent) return next(err);
+
   let statusCode = err.statusCode || (res.statusCode >= 400 ? res.statusCode : 500);
   let message = err.message || 'Internal server error';
   let details = err.details;

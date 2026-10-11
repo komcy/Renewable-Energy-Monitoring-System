@@ -1,102 +1,223 @@
 # Renewable Energy Monitoring System (REMS)
 
-# Project Overview
+REMS is a web application for monitoring renewable energy generation from solar panels and wind turbines, alongside the inverters, batteries and transformers around them. It ingests telemetry, derives performance figures, raises alerts when assets misbehave, tracks maintenance work, and produces reports.
 
-The Renewable Energy Monitoring System (REMS) is a software-based application designed to monitor, analyze, and manage renewable energy generation from sources such as solar panels and wind turbines. The system enables users to track energy production, monitor performance, identify potential faults, and generate performance reports through a centralized platform.
+REMS is software-only: no IoT hardware is needed. Telemetry arrives through the API, through CSV uploads, or from the built-in simulator.
 
-The primary objective of REMS is to improve the efficiency, reliability, and management of renewable energy systems by providing meaningful insights into energy generation and system performance.
+## Features
 
-Note: REMS is designed as a purely software-based system and does not require dedicated IoT devices or physical hardware for its core functionality.
+| Area | What it does |
+|---|---|
+| **Dashboard** | KPIs (total generation, peak power, fleet efficiency, open alerts) with trends against the previous period; actual vs expected power, daily or cumulative energy, and plant/asset breakdown charts |
+| **Plants & assets** | Plants with location and capacity; assets of five types (solar panel, wind turbine, inverter, battery storage, transformer) with live telemetry snapshots, activate/deactivate, and maintenance flags |
+| **Telemetry** | JSON and streamed CSV ingestion; each reading is enriched with expected power, efficiency (performance ratio) and running energy; sortable, filterable data explorer |
+| **Alerts** | Rule engine for zero generation, low efficiency, unexplained output drops, over-temperature, high wind, low battery charge and reported faults; repeat detections are deduplicated; acknowledge and resolve with notes |
+| **Simulator** | Background generator with a daily sun curve, drifting wind, battery cycling and an accelerated clock; inject anomalies to exercise the alert engine |
+| **Maintenance** | Work orders (preventive, corrective, inspection) with priority, schedule, technician, cost and notes; enforced status workflow and full status history; board and table views |
+| **Reports** | Plant performance, alert incident frequency and fleet telemetry export; daily, weekly or monthly grouping; CSV and JSON downloads; report history |
+| **Users & access** | Admin-managed accounts and roles, temporary passwords, password reset, "sign out everywhere", self-service password change |
 
-# Objectives
+## Architecture
 
-Monitor renewable energy generation from solar and wind energy sources.
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI["React 19 SPA<br/>Vite · Tailwind CSS 4 · Recharts"]
+  end
+  subgraph Server["Node.js · Express 5 (port 5000)"]
+    MW["helmet · CORS allow-list · rate limits<br/>JWT auth · role checks"]
+    API["REST API /api/*"]
+    SVC["Services<br/>ingestion · alert engine · analytics<br/>reports · simulator"]
+  end
+  DB[("MongoDB Atlas<br/>Mongoose 9")]
+  CSV[/"CSV files"/]
+  UI -- "HTTPS + Bearer JWT" --> MW --> API --> SVC --> DB
+  CSV -- "multipart upload" --> API
+  SVC -- "timer ticks" --> SVC
+```
 
-Track and visualize energy generation data.
+**How a reading flows through the system**
 
-Identify abnormal performance and potential system faults.
+```mermaid
+sequenceDiagram
+  participant Src as API / CSV / Simulator
+  participant Ing as Ingestion
+  participant Perf as Performance model
+  participant Rules as Alert engine
+  participant DB as MongoDB
+  Src->>Ing: raw readings
+  Ing->>Ing: validate, reject bad rows, skip duplicates
+  Ing->>Perf: expected power, efficiency, energy
+  Ing->>DB: insert readings (batched)
+  Ing->>Rules: evaluate each reading vs asset thresholds
+  Rules->>DB: create alerts or update open ones
+  Ing->>DB: update each asset's latest values
+```
 
-Generate reports to analyze energy production and system efficiency.
+### Repository layout
 
-Provide a centralized dashboard for managing renewable energy assets.
+```
+REMS/
+├── client/                 React app (Vite)
+│   └── src/
+│       ├── api/            axios client + one module per resource
+│       ├── components/     ui/, layout/, auth/, charts/, alerts/, maintenance/, ...
+│       ├── context/        AuthProvider, AlertsProvider, breadcrumbs
+│       ├── pages/          one component per route (data-heavy pages lazy-loaded)
+│       └── router.jsx      routes, guards and error elements
+├── server/                 Express API
+│   ├── app.js              middleware and routes (no listening)
+│   ├── server.js           DB connection, listen, graceful shutdown
+│   ├── models/             Mongoose schemas
+│   ├── controllers/        request handlers
+│   ├── routes/             routers + role checks
+│   ├── services/           ingestion, alert engine, analytics, reports, simulator
+│   ├── middleware/         auth, sanitising, error handling
+│   ├── scripts/            create-admin, build check, production start
+│   └── samples/            sample telemetry CSV
+└── package.json            root scripts (build, start)
+```
 
-Support informed decision-making through historical data and performance analysis.
+## Roles and permissions
 
-# Key Features
+New self-registered accounts are **Viewers**. Admins grant other roles on the Users page.
 
-Energy Monitoring: Track energy generation data for renewable energy assets.
+| Capability | Admin | Operator | Viewer |
+|---|:---:|:---:|:---:|
+| View dashboard, plants, assets, telemetry, alerts, maintenance | ✓ | ✓ | ✓ |
+| Generate and download reports | ✓ | ✓ | ✓ |
+| Delete reports | ✓ (any) | own | own |
+| Create and edit plants; register, edit, (de)activate assets | ✓ | ✓ | |
+| Ingest telemetry (API and CSV upload) | ✓ | ✓ | |
+| Acknowledge and resolve alerts | ✓ | ✓ | |
+| Create work orders and change their status | ✓ | ✓ | |
+| Start/stop the simulator and inject anomalies | ✓ | ✓ | |
+| Manage users, roles, password resets and sessions | ✓ | | |
 
-Interactive Dashboard: Display energy statistics, trends, and performance summaries.
+The API enforces every rule above; the UI hides actions a role can't use. Role changes take effect on the user's next request and their screen updates within a minute.
 
-Performance Analysis: Analyze historical energy production and identify performance variations.
+## Getting started
 
-Fault Detection: Highlight abnormal readings and potential operational issues using software-based rules.
+### Prerequisites
 
-Report Generation: Generate reports summarizing energy generation and system performance.
+- Node.js **20.19+** (22 or 24 recommended) and npm
+- A MongoDB Atlas cluster (or a local MongoDB 5.0+)
 
-Asset Management: Maintain information about renewable energy assets, including their type and location.
+### 1. Install
 
-Data Management: Store and retrieve energy readings and historical records.
+```bash
+git clone https://github.com/komcy/Renewable-Energy-Monitoring-System.git
+cd Renewable-Energy-Monitoring-System
+npm run install:all
+```
 
-User Interface: Provide a simple and intuitive interface for accessing monitoring information.
+### 2. Configure
 
-# Technology Stack
+```bash
+cp server/.env.example server/.env
+cp client/.env.example client/.env
+```
 
-The following technologies can be used to implement REMS:
+Then edit `server/.env` (see the [environment variables](#environment-variables) below). At minimum, set `MONGO_URI` and a long random `JWT_SECRET`:
 
-Frontend: React.js, HTML5, CSS3, Tailwind CSS
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
 
-Backend: Node.js, Express.js
+### 3. Create the first Admin
 
-Database: MongoDB
+```bash
+npm run create-admin --prefix server -- "Your Name" you@example.com "A-Strong-Password1"
+```
 
-Data Visualization: Chart.js or Recharts
+### 4. Run in development
 
-Development Tools: Git, GitHub, Postman, Visual Studio Code
+Use two terminals:
 
-The final technology stack should reflect the technologies actually implemented in your project.
+```bash
+npm run dev:server
+```
 
-# System Architecture
+```bash
+npm run dev:client
+```
 
-REMS follows a client-server architecture consisting of the following components:
+Open http://localhost:5173. The API runs on http://localhost:5000 (`GET /api/health` reports database status).
 
-Presentation Layer: Provides the dashboard and interface for users.
+To get data quickly, sign in as the Admin, open **Simulator**, set a time scale of 60 and a start hour of 6, then press **Start**. Or upload `server/samples/sample_telemetry.csv` from **Telemetry → Upload CSV**.
 
-Application Layer: Processes requests, applies monitoring rules, and performs performance analysis.
+## Production build and start
 
-Data Layer: Stores asset details, energy readings, fault records, and historical data.
+```bash
+npm run build
+```
 
-Analytics Layer: Processes stored readings to calculate performance indicators and identify anomalies.
+This builds the client into `client/dist` and runs the server check, which syntax-checks every server file and loads the whole app.
 
-The system can use simulated or manually entered energy readings to demonstrate monitoring functionality without requiring physical sensors.
+```bash
+npm start
+```
 
-# Core Modules
+This starts the API with `NODE_ENV=production`; it also serves the built client and handles client-side routes. In production the server **refuses to start** unless `JWT_SECRET` is at least 32 characters. Behind a reverse proxy, set `TRUST_PROXY=1` and add your public URL to `CLIENT_URL`.
 
-User Management: Manages user access and authentication, if implemented.
+## Environment variables
 
-Renewable Asset Management: Maintains details of solar and wind energy assets.
+**`server/.env`**
 
-Energy Monitoring: Records and displays energy generation readings.
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `5000` | API port |
+| `NODE_ENV` | `development` | `production` serves `client/dist` and requires a strong secret |
+| `MONGO_URI` | (required) | MongoDB connection string |
+| `JWT_SECRET` | (required) | Token signing secret; 32+ random characters |
+| `JWT_EXPIRES_IN` | `1d` | Token lifetime |
+| `CLIENT_URL` | `http://localhost:5173` | Allowed browser origins (comma-separated) |
+| `TRUST_PROXY` | (unset) | Set to `1` behind a reverse proxy so rate limits see real IPs |
+| `AUTH_RATE_LIMIT` | `20` | Failed sign-in attempts allowed per 15 min per IP |
+| `API_RATE_LIMIT` | `3000` | API requests per 15 min per IP |
+| `SIM_TIMEZONE` | `Asia/Kolkata` | Timezone of the simulator's day/night cycle |
+| `SIMULATOR_AUTOSTART` | `false` | Start the simulator when the server starts |
+| `SIMULATOR_INTERVAL_SECONDS` | `10` | Autostart tick interval |
+| `SIMULATOR_TIME_SCALE` | `1` | Autostart clock speed |
 
-Fault Monitoring: Identifies unusual readings using predefined thresholds or rules.
+**`client/.env`**
 
-Analytics and Reporting: Summarizes historical generation data and performance indicators.
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:5000/api` | API base URL (use `/api` when the server serves the client) |
 
-# Installation and Setup
+## API overview
 
-Prerequisites
+All routes are under `/api`. Every route except `auth/login`, `auth/register` and `health` needs `Authorization: Bearer <token>`.
 
-Node.js and npm
+| Resource | Endpoints |
+|---|---|
+| Auth | `POST auth/register` · `POST auth/login` · `GET auth/me` · `POST auth/change-password` |
+| Users (Admin) | `GET/POST users` · `PUT users/:id` · `POST users/:id/reset-password` · `POST users/:id/revoke-sessions` |
+| Plants | `GET/POST plants` · `GET/PUT/DELETE plants/:id` |
+| Assets | `GET/POST assets` · `GET/PUT/DELETE assets/:id` · `PATCH assets/:id/status` |
+| Telemetry | `POST telemetry` · `POST telemetry/upload` (CSV) · `GET telemetry` · `GET telemetry/latest` · `GET telemetry/aggregate` |
+| Alerts | `GET alerts` · `GET alerts/active` · `GET alerts/summary` · `GET alerts/counts` · `GET alerts/:id` · `PATCH alerts/:id/acknowledge` · `PATCH alerts/:id/resolve` |
+| Analytics | `GET analytics/dashboard` |
+| Maintenance | `GET/POST maintenance` · `GET maintenance/summary` · `GET/PUT/DELETE maintenance/:id` · `PATCH maintenance/:id/status` |
+| Reports | `GET/POST reports` · `GET/DELETE reports/:id` · `GET reports/:id/download?format=csv\|json` |
+| Simulator | `GET simulator/status` · `POST simulator/start` · `POST simulator/stop` · `POST simulator/anomaly` |
 
-MongoDB or a MongoDB Atlas connection
+Work orders move **Scheduled → In Progress → Completed**. Either open status can move to **Cancelled** (a reason is required), and a cancelled order can be rescheduled. Completing requires notes describing the work done.
 
-Git
+## Security and resilience
 
-# Academic Context
+- **Passwords and sessions:** passwords are hashed with bcrypt. JWTs carry a per-user version, so a password change or reset, a deactivation or "sign out everywhere" invalidates existing tokens immediately.
+- **Request protection:** `helmet` security headers, including a Content Security Policy for the served client; a CORS allow-list; rate limiting of failed sign-ins and of overall API use; and rejection of MongoDB operator keys (`$gt`, dotted paths) in request bodies and queries.
+- **CSV exports:** cells are escaped against spreadsheet formula injection.
+- **Server resilience:** graceful shutdown on `SIGINT`/`SIGTERM` (the simulator stops, connections close, then the database disconnects), and a clean exit on unhandled errors so a process manager can restart the server.
+- **Client resilience:** a React error boundary plus route-level error pages, which show a "new version available" prompt if a page's code changed after deploy.
 
-This project is developed as part of a Software Engineering course to demonstrate the application of software engineering principles, including requirements analysis, system design, modular architecture, database management, testing, and documentation.
+## Academic context
 
-👥 Contributors
+This project was developed for a Software Engineering course. It demonstrates requirements analysis (SRS), UML-based design, a modular architecture, database design, testing and documentation.
 
-Komal Jadhav - 2024300087
-Pritam Jadhav - 2024300088
+### Contributors
+
+- Komal Jadhav (2024300087)
+- Pritam Jadhav (2024300088)
