@@ -1,0 +1,16 @@
+{
+  "name": "rems",
+  "private": true,
+  "description": "Renewable Energy Monitoring System: Express + MongoDB API and React client",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "lint": "npm run lint --prefix client",
+    "build": "npm run build --prefix client && npm run build --prefix server",
+    "start": "npm run start:prod --prefix server"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}
