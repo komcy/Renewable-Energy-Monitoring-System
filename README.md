@@ -74,8 +74,12 @@ REMS/
 │   ├── services/           ingestion, alert engine, analytics, reports, simulator
 │   ├── middleware/         auth, sanitising, error handling
 │   ├── scripts/            create-admin, build check, production start
+│   ├── test/               integration + unit tests (node:test)
 │   └── samples/            sample telemetry CSV
-└── package.json            root scripts (build, start)
+├── scripts/dev.js          starts API and client together (npm run dev)
+├── Dockerfile              multi-stage production image
+├── docker-compose.yml      container orchestration (+ optional local MongoDB)
+└── package.json            root scripts (dev, test, build, start, docker:*)
 ```
 
 ## Roles and permissions
@@ -132,15 +136,11 @@ npm run create-admin --prefix server -- "Your Name" you@example.com "A-Strong-Pa
 
 ### 4. Run in development
 
-Use two terminals:
-
 ```bash
-npm run dev:server
+npm run dev
 ```
 
-```bash
-npm run dev:client
-```
+This starts the API (nodemon, auto-restart, port 5000) and the client (Vite, hot reload, port 5173) together, with `[server]` / `[client]` prefixed output. Ctrl+C stops both. To run them in separate terminals instead, use `npm run dev:server` and `npm run dev:client`.
 
 Open http://localhost:5173. The API runs on http://localhost:5000 (`GET /api/health` reports database status).
 
@@ -158,7 +158,52 @@ This builds the client into `client/dist` and runs the server check, which synta
 npm start
 ```
 
-This starts the API with `NODE_ENV=production`; it also serves the built client and handles client-side routes. In production the server **refuses to start** unless `JWT_SECRET` is at least 32 characters. Behind a reverse proxy, set `TRUST_PROXY=1` and add your public URL to `CLIENT_URL`.
+This starts one server on port 5000 with `NODE_ENV=production`. It serves the API under `/api`, serves the built client, and returns `index.html` for client-side routes such as `/plants/123`; unknown `/api/*` routes still return JSON 404s. Open http://localhost:5000; the Vite server on 5173 isn't used.
+
+In production the server **refuses to start** unless `JWT_SECRET` is at least 32 characters. Behind a reverse proxy, set `TRUST_PROXY=1` and add your public URL to `CLIENT_URL`. Requests from the server's own origin are always allowed.
+
+## Testing
+
+```bash
+npm test
+```
+
+This runs 40 tests with Node's built-in test runner (no extra dependencies):
+
+| Suite | Covers |
+|---|---|
+| `auth.test.js` | Registration always as Viewer; JWT issuance and claims; missing, malformed and forged tokens; deactivated accounts; password change rotating the token; operator-injection rejection |
+| `rbac.test.js` | Authentication on every route; Viewer read access and a 403 for every write/control action; Operator vs Admin rights; role changes and session revocation taking effect on the next request |
+| `telemetry.test.js` | Expected power, efficiency and trapezoidal energy for a batch; ZeroGeneration, OverTemperature, LowEfficiency and LowStateOfCharge alerts; deduplication of repeats; all-or-nothing batch rejection; duplicates; deactivated assets; hourly aggregation |
+| `production.test.js` | SPA served at `/` with security headers, client-route fallback, JSON 404s for `/api`, immutable asset caching, CORS for own vs foreign origins (skipped if the client isn't built) |
+| `units.test.js` | Performance model, alert rules and CSV escaping (no database) |
+
+The integration tests start the real app on a random port against a **separate database**: your `MONGO_URI` with `_test` appended to the database name (`rems` → `rems_test`), or `TEST_MONGO_URI` if set. That database is wiped before and after each suite, and the harness refuses any database whose name doesn't end in `_test`. For the database-free tests only, run `npm run test:unit --prefix server`.
+
+## Docker
+
+The multi-stage `Dockerfile` builds the client, installs production-only server dependencies and produces a slim image. It runs as a non-root user, serves the UI and API on port 5000, and has a health check on `/api/health`. Secrets are never baked into the image (`.dockerignore` excludes `.env` files); they're supplied at runtime from `server/.env`.
+
+```bash
+docker compose up --build -d
+```
+
+Then open http://localhost:5000 (`docker compose ps` shows the container as healthy). Stop it with `docker compose down`.
+
+**Local MongoDB instead of Atlas:** set `MONGO_URI=mongodb://mongo:27017/rems` in `server/.env`, then start with the bundled database:
+
+```bash
+docker compose --profile local-db up --build -d
+```
+
+**Image only:**
+
+```bash
+docker build -t rems .
+docker run --env-file server/.env -p 5000:5000 rems
+```
+
+Optional compose variables: `REMS_PORT` (host port, default 5000) and `REMS_PUBLIC_URL` (the URL users open, default `http://localhost:5000`).
 
 ## Environment variables
 
@@ -171,7 +216,7 @@ This starts the API with `NODE_ENV=production`; it also serves the built client 
 | `MONGO_URI` | (required) | MongoDB connection string |
 | `JWT_SECRET` | (required) | Token signing secret; 32+ random characters |
 | `JWT_EXPIRES_IN` | `1d` | Token lifetime |
-| `CLIENT_URL` | `http://localhost:5173` | Allowed browser origins (comma-separated) |
+| `CLIENT_URL` | `http://localhost:5173` | Extra allowed browser origins, comma-separated (the server's own origin is always allowed) |
 | `TRUST_PROXY` | (unset) | Set to `1` behind a reverse proxy so rate limits see real IPs |
 | `AUTH_RATE_LIMIT` | `20` | Failed sign-in attempts allowed per 15 min per IP |
 | `API_RATE_LIMIT` | `3000` | API requests per 15 min per IP |
@@ -186,22 +231,79 @@ This starts the API with `NODE_ENV=production`; it also serves the built client 
 |---|---|---|
 | `VITE_API_URL` | `http://localhost:5000/api` | API base URL (use `/api` when the server serves the client) |
 
-## API overview
+## API reference
 
-All routes are under `/api`. Every route except `auth/login`, `auth/register` and `health` needs `Authorization: Bearer <token>`.
+All routes are under `/api` and return JSON (`{ success, data, ... }` on success, `{ success: false, message, details? }` on error). Send `Authorization: Bearer <token>` on every route marked with a role. In the Access column, **Any** means any signed-in user, and **Ops** means Admin or Operator.
 
-| Resource | Endpoints |
-|---|---|
-| Auth | `POST auth/register` · `POST auth/login` · `GET auth/me` · `POST auth/change-password` |
-| Users (Admin) | `GET/POST users` · `PUT users/:id` · `POST users/:id/reset-password` · `POST users/:id/revoke-sessions` |
-| Plants | `GET/POST plants` · `GET/PUT/DELETE plants/:id` |
-| Assets | `GET/POST assets` · `GET/PUT/DELETE assets/:id` · `PATCH assets/:id/status` |
-| Telemetry | `POST telemetry` · `POST telemetry/upload` (CSV) · `GET telemetry` · `GET telemetry/latest` · `GET telemetry/aggregate` |
-| Alerts | `GET alerts` · `GET alerts/active` · `GET alerts/summary` · `GET alerts/counts` · `GET alerts/:id` · `PATCH alerts/:id/acknowledge` · `PATCH alerts/:id/resolve` |
-| Analytics | `GET analytics/dashboard` |
-| Maintenance | `GET/POST maintenance` · `GET maintenance/summary` · `GET/PUT/DELETE maintenance/:id` · `PATCH maintenance/:id/status` |
-| Reports | `GET/POST reports` · `GET/DELETE reports/:id` · `GET reports/:id/download?format=csv\|json` |
-| Simulator | `GET simulator/status` · `POST simulator/start` · `POST simulator/stop` · `POST simulator/anomaly` |
+**Auth and users**
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| GET | `/health` | Public | API and database status |
+| POST | `/auth/register` | Public | Create an account (always Viewer); returns a token |
+| POST | `/auth/login` | Public | Sign in; returns a token (failed attempts are rate-limited) |
+| GET | `/auth/me` | Any | Current user |
+| POST | `/auth/change-password` | Any | Change own password; returns a new token, signs out other sessions |
+| GET | `/users` | Admin | List users (`search`, `role`, `status`, paging) with role counts |
+| POST | `/users` | Admin | Create a user; without a password, returns a one-time `temporaryPassword` |
+| PUT | `/users/:id` | Admin | Update name, email, role or active status |
+| POST | `/users/:id/reset-password` | Admin | Issue a temporary password and sign the user out |
+| POST | `/users/:id/revoke-sessions` | Admin | Sign the user out everywhere |
+
+**Plants and assets**
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| GET | `/plants` | Any | List plants (`plantType`, `status`, `search`) with asset counts |
+| GET | `/plants/:id` | Any | Plant with assets, open alerts and per-asset open maintenance |
+| POST | `/plants` | Ops | Create a plant |
+| PUT | `/plants/:id` | Ops | Update a plant (partial; location merges) |
+| DELETE | `/plants/:id` | Ops | Delete a plant with no assets |
+| GET | `/assets` | Any | List assets (`plant`, `sourceType`, `status`, `search`) |
+| GET | `/assets/:id` | Any | Asset with latest reading and open-alert count |
+| POST | `/assets` | Ops | Register an asset (type-specific specs and thresholds) |
+| PUT | `/assets/:id` | Ops | Update specs, thresholds or details |
+| PATCH | `/assets/:id/status` | Ops | Activate or deactivate (deactivated assets reject telemetry) |
+| DELETE | `/assets/:id` | Ops | Delete an asset with no telemetry history |
+
+**Telemetry, alerts and analytics**
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| POST | `/telemetry` | Ops | Ingest one reading, an array, or `{ readings: [...] }` (up to 5,000; all-or-nothing) |
+| POST | `/telemetry/upload` | Ops | Stream a CSV (`multipart/form-data`, field `file`); good rows stored, bad rows reported by line |
+| GET | `/telemetry` | Any | Raw readings (`plant`, `asset`, `from`, `to`, `status`, `source`, `sortBy`, `sort`, paging) |
+| GET | `/telemetry/latest` | Any | Newest reading per asset (`plant`) |
+| GET | `/telemetry/aggregate` | Any | Hourly/daily buckets (`interval`, `plant`/`asset`, `sourceType`, `from`, `to`, `timezone`) |
+| GET | `/alerts` | Any | List alerts (`status`, `severity`, `alertType`, `plant`, `asset`, dates, paging) |
+| GET | `/alerts/active` | Any | Open alerts, most severe first |
+| GET | `/alerts/summary` | Any | Open alerts by severity and status |
+| GET | `/alerts/counts` | Any | Counts by severity for given filters |
+| GET | `/alerts/:id` | Any | Alert with asset, reading and lifecycle |
+| PATCH | `/alerts/:id/acknowledge` | Ops | Acknowledge an active alert |
+| PATCH | `/alerts/:id/resolve` | Ops | Resolve with `resolutionNotes` |
+| GET | `/analytics/dashboard` | Any | KPIs with previous-period trends, fleet status, plant/asset breakdown |
+
+**Maintenance, reports and simulator**
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| GET | `/maintenance` | Any | Work orders (`status`, `priority`, `type`, `plant`, `asset`, `search`, `overdue`) |
+| GET | `/maintenance/summary` | Any | Open, overdue, completed and cost this month |
+| GET | `/maintenance/:id` | Any | Work order with history and allowed next statuses |
+| POST | `/maintenance` | Ops | Create a work order for an asset |
+| PUT | `/maintenance/:id` | Ops | Edit an open work order (cost and notes only once closed) |
+| PATCH | `/maintenance/:id/status` | Ops | Change status (`status`, `note`, plus `technicianNotes`/`cost` when completing) |
+| DELETE | `/maintenance/:id` | Ops | Delete a scheduled or cancelled work order |
+| GET | `/reports` | Any | Report history (`reportType`, `plant`, paging) |
+| POST | `/reports` | Any | Generate (`reportType`, `plant`, `from`, `to`, `granularity`, `timezone`) |
+| GET | `/reports/:id` | Any | Report with rows |
+| GET | `/reports/:id/download` | Any | Download as `format=csv` or `json` (telemetry exports are streamed) |
+| DELETE | `/reports/:id` | Admin or author | Delete a report |
+| GET | `/simulator/status` | Any | Simulator state, counters, recent alerts |
+| POST | `/simulator/start` | Ops | Start (`intervalSeconds`, `timeScale`, `startHour`, `durationMinutes`, `anomalyRate`, `plant`) |
+| POST | `/simulator/stop` | Ops | Stop |
+| POST | `/simulator/anomaly` | Ops | Inject an anomaly (`assetCode`, `type`, `ticks`) |
 
 Work orders move **Scheduled → In Progress → Completed**. Either open status can move to **Cancelled** (a reason is required), and a cancelled order can be rescheduled. Completing requires notes describing the work done.
 

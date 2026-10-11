@@ -1,0 +1,47 @@
+# REMS with Docker Compose
+#
+#   Atlas (default):     docker compose up --build
+#   Local MongoDB too:   docker compose --profile local-db up --build
+#                        (and set MONGO_URI=mongodb://mongo:27017/rems in server/.env)
+#
+# Secrets come from server/.env (never baked into the image).
+# Open http://localhost:5000 once the container reports "healthy".
+
+services:
+  rems:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rems:latest
+    container_name: rems
+    restart: unless-stopped
+    env_file:
+      - server/.env
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # The browser talks to the same origin that serves the UI
+      CLIENT_URL: ${REMS_PUBLIC_URL:-http://localhost:5000}
+    ports:
+      - "${REMS_PORT:-5000}:5000"
+    # SIGTERM triggers graceful shutdown (simulator stop, DB disconnect)
+    stop_grace_period: 15s
+
+  # Optional local database: enable with `--profile local-db`
+  mongo:
+    image: mongo:7
+    profiles: ["local-db"]
+    container_name: rems-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo-data:
