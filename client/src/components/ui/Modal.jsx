@@ -1,11 +1,10 @@
 import { X } from 'lucide-react'
 import { useEffect, useEffectEvent, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { isTopOverlay, popOverlay, pushOverlay } from './overlayStack'
 
 const SIZES = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl' }
 
-// Open dialogs, innermost last: Escape only closes the topmost one
-const openStack = []
 
 /**
  * Accessible dialog: Escape and backdrop close it, focus moves inside on open
@@ -26,14 +25,13 @@ export default function Modal({ open, onClose, title, description, size = 'md', 
     document.body.style.overflow = 'hidden'
     const focusable = panelRef.current?.querySelector('input, textarea, select, button:not([data-close])')
     ;(focusable || panelRef.current)?.focus()
-    const token = {}
-    openStack.push(token)
+    const token = pushOverlay()
     const onKey = (e) => {
-      if (e.key === 'Escape' && openStack.at(-1) === token) onEscape()
+      if (e.key === 'Escape' && isTopOverlay(token)) onEscape()
     }
     document.addEventListener('keydown', onKey)
     return () => {
-      openStack.splice(openStack.indexOf(token), 1)
+      popOverlay(token)
       document.body.style.overflow = overflow
       document.removeEventListener('keydown', onKey)
       previous?.focus?.()

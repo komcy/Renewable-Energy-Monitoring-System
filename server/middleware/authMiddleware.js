@@ -25,6 +25,10 @@ const verifyToken = async (req, res, next) => {
   const user = await User.findById(payload.id);
   if (!user) throw new ApiError(401, 'Not authorized: user no longer exists');
   if (!user.isActive) throw new ApiError(403, 'Account is deactivated');
+  // Tokens issued before the user's sessions were revoked are no longer valid
+  if ((payload.tv ?? 0) !== (user.tokenVersion ?? 0)) {
+    throw new ApiError(401, 'Not authorized: session has been signed out');
+  }
 
   req.user = user;
   next();

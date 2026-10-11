@@ -1,4 +1,4 @@
-import { ChevronDown, LogOut } from 'lucide-react'
+import { ChevronDown, KeyRound, LogOut } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { RoleBadge } from '@/components/ui/Badges'
 import { ROLE_DESCRIPTIONS } from '@/constants/roles'
@@ -12,7 +12,7 @@ const AVATAR = {
   Viewer: 'bg-slate-500',
 }
 
-export default function UserMenu() {
+export default function UserMenu({ onChangePassword }) {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -55,6 +55,17 @@ export default function UserMenu() {
               <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{ROLE_DESCRIPTIONS[user.role]}</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              close()
+              onChangePassword()
+            }}
+            className="flex w-full items-center gap-2 border-t border-slate-100 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <KeyRound className="size-4 text-slate-400" />
+            Change password
+          </button>
           <button
             type="button"
             onClick={() => logout('user')}

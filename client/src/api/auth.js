@@ -13,4 +13,9 @@ export const authApi = {
     const { data } = await api.get('/auth/me')
     return data.user
   },
+  /** Signs out other sessions; returns a fresh token for this one. */
+  async changePassword(currentPassword, newPassword) {
+    const { data } = await api.post('/auth/change-password', { currentPassword, newPassword })
+    return { token: data.token, user: data.user }
+  },
 }

@@ -5,7 +5,15 @@ import AppLayout from '@/layouts/AppLayout'
 import AuthLayout from '@/layouts/AuthLayout'
 import ComingSoonPage from '@/pages/ComingSoonPage'
 import LoginPage from '@/pages/LoginPage'
-import { AlertsPage, DashboardPage, PlantDetailPage, PlantsPage } from '@/pages/lazyPages'
+import {
+  AlertsPage,
+  DashboardPage,
+  PlantDetailPage,
+  PlantsPage,
+  SimulatorPage,
+  TelemetryPage,
+  UsersPage,
+} from '@/pages/lazyPages'
 import NotFoundPage from '@/pages/NotFoundPage'
 import RegisterPage from '@/pages/RegisterPage'
 
@@ -35,11 +43,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/', element: <Navigate to="/dashboard" replace /> },
           { path: '/dashboard', element: <DashboardPage />, handle: { crumb: 'Dashboard' } },
-          {
-            path: '/telemetry',
-            handle: { crumb: 'Telemetry' },
-            element: soon('Telemetry', 'Browse historical readings, chart trends and upload CSV telemetry.', 'Analytics phase'),
-          },
+          { path: '/telemetry', element: <TelemetryPage />, handle: { crumb: 'Telemetry' } },
           { path: '/alerts', element: <AlertsPage />, handle: { crumb: 'Alerts' } },
           {
             path: '/plants',
@@ -69,7 +73,7 @@ export const router = createBrowserRouter([
             handle: { crumb: 'Simulator' },
             element: (
               <ProtectedRoute permission="simulator:control">
-                {soon('Telemetry simulator', 'Start, stop and inject anomalies into the live telemetry simulator.', 'Simulator UI phase')}
+                <SimulatorPage />
               </ProtectedRoute>
             ),
           },
@@ -78,7 +82,7 @@ export const router = createBrowserRouter([
             handle: { crumb: 'Users' },
             element: (
               <ProtectedRoute permission="users:manage">
-                {soon('User management', 'Invite users and assign Admin, Operator or Viewer roles.', 'Administration phase')}
+                <UsersPage />
               </ProtectedRoute>
             ),
           },

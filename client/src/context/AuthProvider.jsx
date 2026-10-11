@@ -71,6 +71,34 @@ export function AuthProvider({ children }) {
     return () => clearTimeout(timer)
   }, [token, logout])
 
+  // Re-sync the user every minute and when the tab regains focus, so a role
+  // change by an Admin shows up in the UI without signing out
+  useEffect(() => {
+    if (status !== 'authenticated') return undefined
+    const sync = () => {
+      if (document.hidden) return
+      authApi
+        .me()
+        .then((me) => {
+          setUser((prev) => {
+            if (prev && me.role !== prev.role) {
+              toast(`Your role is now ${me.role}`, { id: 'role-changed', icon: '🔑' })
+            }
+            return me
+          })
+        })
+        .catch(() => {
+          /* 401s are handled by the interceptor; ignore network blips */
+        })
+    }
+    const timer = setInterval(sync, 60_000)
+    window.addEventListener('focus', sync)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', sync)
+    }
+  }, [status])
+
   // Any API call rejected with 401 means the token is no longer accepted
   useEffect(() => {
     const onUnauthorized = () => logout('expired')
@@ -96,6 +124,11 @@ export function AuthProvider({ children }) {
     [startSession],
   )
 
+  const changePassword = useCallback(
+    async (currentPassword, newPassword) => startSession(await authApi.changePassword(currentPassword, newPassword)),
+    [startSession],
+  )
+
   const retry = useCallback(() => {
     setStatus('loading')
     setAttempt((n) => n + 1)
@@ -113,11 +146,12 @@ export function AuthProvider({ children }) {
       login,
       register,
       logout,
+      changePassword,
       retry,
       hasRole,
       can,
     }),
-    [user, token, status, login, register, logout, retry, hasRole, can],
+    [user, token, status, login, register, logout, changePassword, retry, hasRole, can],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
