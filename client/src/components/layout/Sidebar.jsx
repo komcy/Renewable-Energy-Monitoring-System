@@ -1,5 +1,5 @@
 import { ChevronsLeft, ChevronsRight, X } from 'lucide-react'
-import { NavLink } from 'react-router'
+import { Link, NavLink } from 'react-router'
 import Logo from '@/components/ui/Logo'
 import { NAV_SECTIONS } from '@/constants/navigation'
 import { useAlerts } from '@/hooks/useAlerts'
@@ -45,7 +45,9 @@ function SidebarContent({ collapsed, onToggleCollapse, onNavigate, onClose }) {
   return (
     <div className="flex h-full flex-col bg-slate-900">
       <div className={`flex h-16 shrink-0 items-center border-b border-white/5 ${collapsed ? 'justify-center' : 'justify-between px-4'}`}>
-        <Logo collapsed={collapsed} light />
+        <Link to="/welcome" aria-label="REMS home" title="About REMS" className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400">
+          <Logo collapsed={collapsed} light />
+        </Link>
         {onClose && (
           <button
             type="button"
