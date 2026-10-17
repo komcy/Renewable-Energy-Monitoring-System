@@ -4,3 +4,8 @@ build/
 dist/
 *.log
 .DS_Store
+
+server/samples/kaggle/
+
+server/samples/kaggle/
+*.zip
