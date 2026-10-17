@@ -3,10 +3,11 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute'
 import PublicOnlyRoute from '@/components/auth/PublicOnlyRoute'
 import AppLayout from '@/layouts/AppLayout'
 import AuthLayout from '@/layouts/AuthLayout'
-import ComingSoonPage from '@/pages/ComingSoonPage'
+import LandingPage from '@/pages/LandingPage'
 import LoginPage from '@/pages/LoginPage'
 import {
   AlertsPage,
+  AssetsPage,
   DashboardPage,
   MaintenancePage,
   PlantDetailPage,
@@ -21,6 +22,9 @@ import RegisterPage from '@/pages/RegisterPage'
 import RouteErrorPage from '@/pages/RouteErrorPage'
 
 export const router = createBrowserRouter([
+  // Public marketing page, reachable whether or not you're signed in
+  { path: '/welcome', element: <LandingPage />, errorElement: <RouteErrorPage fullPage /> },
+
   // Public: signed-in users are redirected to the dashboard
   {
     element: <PublicOnlyRoute />,
@@ -60,17 +64,7 @@ export const router = createBrowserRouter([
                   { path: ':id', element: <PlantDetailPage />, handle: { crumb: 'Plant details' } },
                 ],
               },
-              {
-                path: '/assets',
-                handle: { crumb: 'Assets' },
-                element: (
-                  <ComingSoonPage
-                    title="Assets"
-                    description="Register and edit panels, turbines, inverters, batteries and transformers with their thresholds. Until then, manage asset status from each plant's page."
-                    phase="Asset management"
-                  />
-                ),
-              },
+              { path: '/assets', element: <AssetsPage />, handle: { crumb: 'Assets' } },
               { path: '/maintenance', element: <MaintenancePage />, handle: { crumb: 'Maintenance' } },
               { path: '/reports', element: <ReportsPage />, handle: { crumb: 'Reports' } },
               {
