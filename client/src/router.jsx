@@ -10,6 +10,7 @@ import {
   AssetsPage,
   DashboardPage,
   MaintenancePage,
+  PredictiveMaintenancePage,
   PlantDetailPage,
   PlantsPage,
   ReportsPage,
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
               },
               { path: '/assets', element: <AssetsPage />, handle: { crumb: 'Assets' } },
               { path: '/maintenance', element: <MaintenancePage />, handle: { crumb: 'Maintenance' } },
+              { path: '/diagnostics', element: <PredictiveMaintenancePage />, handle: { crumb: 'Predictive maintenance' } },
               { path: '/reports', element: <ReportsPage />, handle: { crumb: 'Reports' } },
               {
                 path: '/simulator',
