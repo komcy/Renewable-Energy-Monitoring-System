@@ -97,6 +97,9 @@ export default function AssetDetailDrawer({ assetId, version, canWrite, onClose,
                   ['Health index', a.healthIndex != null ? `${formatNumber(a.healthIndex, 0)} / 100` : null],
                 ]}
               />
+              <Link to={`/diagnostics?asset=${a.id}`} className="mt-3 inline-block text-sm font-semibold text-emerald-700 hover:underline">
+                View health diagnostics
+              </Link>
             </Section>
 
             <Section title="Latest reading">

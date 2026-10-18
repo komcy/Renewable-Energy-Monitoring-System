@@ -4,6 +4,7 @@ import {
   Factory,
   FileText,
   FlaskConical,
+  HeartPulse,
   LayoutDashboard,
   Sun,
   Users,
@@ -26,6 +27,7 @@ export const NAV_SECTIONS = [
       { to: '/plants', label: 'Plants', icon: Factory },
       { to: '/assets', label: 'Assets', icon: Sun },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench },
+      { to: '/diagnostics', label: 'Diagnostics', icon: HeartPulse },
     ],
   },
   {
